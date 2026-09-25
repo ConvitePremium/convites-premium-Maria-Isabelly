@@ -33,7 +33,7 @@
   <!-- Fim do bloco de preview -->
 
   <link rel="preload" href="assets/opening.webp" as="image">
-  <link rel="preload" href="assets/video.mp4" as="video" type="video/mp4">
+  <link rel="preload" href="assets/intermediaria.webp" as="image">
   <style>
     *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
     html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
@@ -48,8 +48,7 @@
     #dressScreen{--bg-img:url('assets/dresscode.webp')}
     #manualScreen{--bg-img:url('assets/manual.webp')}
     #countdownScreen{--bg-img:url('assets/contagem.webp')}
-    #videoScreen{--bg-img:url('assets/principal.webp')}
-    #videoPlayer{position:absolute;inset:0;z-index:1;width:100%;height:100%;object-fit:contain;background:#000}
+    #intermediateScreen{--bg-img:url('assets/intermediaria.webp')}
     .hotspot{position:absolute;border:0;background:transparent;cursor:pointer;z-index:5}
     .pix-copy{position:absolute;border:0;background:transparent;cursor:pointer;z-index:6}
     .copy-toast{position:fixed;left:50%;bottom:max(24px,env(safe-area-inset-bottom));transform:translateX(-50%) translateY(12px);z-index:50;background:rgba(0,0,0,.84);color:#fff;padding:10px 16px;border-radius:999px;font-size:14px;font-weight:700;opacity:0;pointer-events:none;transition:.2s ease;white-space:nowrap}
@@ -118,9 +117,11 @@
       </div>
     </section>
 
-    <section id="videoScreen" class="screen" aria-label="Vídeo do convite">
-      <div class="stage"><video id="videoPlayer" src="assets/video.mp4" preload="metadata" playsinline webkit-playsinline></video></div>
-      <button class="skip" id="skipBtn" type="button">Pular vídeo</button>
+    <section id="intermediateScreen" class="screen" aria-label="Continuar convite">
+      <div class="stage" id="intermediateStage">
+        <img class="art" src="assets/intermediaria.webp" alt="Continuar convite" loading="eager" width="941" height="1672">
+        <button class="hotspot" id="continueBtn" data-key="continue" data-label="Continuar" aria-label="Continuar para o convite principal"></button>
+      </div>
     </section>
 
     <section id="mainScreen" class="screen" aria-label="Convite principal">
@@ -218,7 +219,7 @@
         mapa: CFG.mapa || "#",
         pix: Object.assign({ ativo:false, chave:"", posicao:{left:20,top:65,width:60,height:10} }, CFG.pix || {}),
         telas: Object.assign({
-          video:true,
+          intermediaria:true,
           whatsapp:true,
           localizacao:true,
           presentes:true,
@@ -289,7 +290,7 @@
       if(musicUnlock) musicUnlock.textContent = C.textos.ativarMusica;
 
       // Telas ligáveis/desligáveis
-      const hasVideo = !!C.telas.video;
+      const hasIntermediate = C.telas.intermediaria !== false;
       const hasWhatsapp = !!C.telas.whatsapp;
       const hasMap = !!C.telas.localizacao;
       const hasGift = !!C.telas.presentes;
@@ -299,6 +300,7 @@
       const hasCountdown = !!C.telas.contagem;
 
       const featureEnabled = {
+        continue: hasIntermediate,
         confirm: hasWhatsapp,
         map: hasMap,
         gift: hasGift,
@@ -317,6 +319,7 @@
       const STORAGE_KEY = "convite-hotspots-v2:" + location.pathname;
       const $ = (id)=>document.getElementById(id);
       const buttons = {
+        continue: document.getElementById("continueBtn"),
         confirm: document.getElementById("confirmBtn"),
         map: document.getElementById("mapBtn"),
         gift: document.getElementById("giftBtn"),
@@ -331,6 +334,7 @@
         backCountdown: document.getElementById("countdownBackBtn")
       };
       let HOTSPOTS = {};
+      if(hasIntermediate) HOTSPOTS.continue = JSON.parse(JSON.stringify((C.hotspots||{}).continue || {left:25,top:72,width:50,height:10}));
       Object.entries(C.hotspots || {}).forEach(([key,value])=>{
         if(featureEnabled[key]) HOTSPOTS[key] = JSON.parse(JSON.stringify(value));
       });
@@ -417,7 +421,7 @@
 
       const buildScreens = ()=>{
         const list = ["opening"];
-        if(hasVideo) list.push("videoScreen");
+        if(hasIntermediate) list.push("intermediateScreen");
         list.push("mainScreen");
         if(hasGift) list.push("giftScreen");
         if(hasDress) list.push("dressScreen");
@@ -426,7 +430,6 @@
         return list.map($);
       };
       const screens = buildScreens();
-      const video = $("videoPlayer");
       const music = $("music");
 
       if(window.ResizeObserver && $("countdownBox")){
@@ -494,65 +497,27 @@
 
       // ---- FLUXO ENTRE TELAS ---------------------------------------------
       function goMain(){
-        if($("mainScreen").classList.contains("active")) return;
-        if(hasVideo) video.pause();
-
-        const openMain = ()=>{
-          show("mainScreen");
-
-          // Só tenta iniciar novamente se a música realmente estiver parada.
-          // Assim ela continua do ponto atual ao sair do vídeo.
-          if(!musicStarted || music.paused){
-            startMusic(true).then((ok)=>{
-              if(!ok) document.body.classList.add("need-music");
-            });
-          }
-        };
-
-        if(hasVideo){
-          $("videoScreen").classList.add("fade-out");
-          setTimeout(openMain, 520);
-        } else {
-          openMain();
+        show("mainScreen");
+        if(!musicStarted || music.paused){
+          startMusic(true).then((ok)=>{ if(!ok) document.body.classList.add("need-music"); });
         }
       }
 
-      // Toque na abertura: chama música e vídeo imediatamente no mesmo gesto.
-      // Isso aumenta a compatibilidade com Safari/iPhone.
+      // Toque na abertura: desbloqueia a música e mostra a imagem intermediária.
       $("opening").addEventListener("click", ()=>{
-        // Começa sempre com o botão escondido.
-        // Ele só aparece quando a tentativa de tocar o MP3 realmente falhar.
         document.body.classList.remove("need-music");
-
-        if(hasVideo){
-          show("videoScreen");
-          video.volume = 1;
-
-          // Música e vídeo são solicitados imediatamente no mesmo gesto.
-          const musicPromise = startMusic(false);
-          const videoPromise = video.play();
-
-          Promise.resolve(musicPromise).then((ok)=>{
-            if(!ok) document.body.classList.add("need-music");
-          });
-
-          Promise.resolve(videoPromise)
-            .catch(()=>{
-              goMain();
-              ensureMusicButton();
-            });
-        } else {
-          startMusic(false).then((ok)=>{
-            if(!ok) document.body.classList.add("need-music");
-          });
-          goMain();
-        }
+        startMusic(false).then((ok)=>{ if(!ok) document.body.classList.add("need-music"); });
+        if(hasIntermediate) show("intermediateScreen"); else goMain();
       }, {once:true});
 
-      if(hasVideo){
-        video.addEventListener("ended", goMain);
-        video.addEventListener("error", goMain);
-        $("skipBtn").addEventListener("click", goMain);
+      if(hasIntermediate && $("continueBtn")){
+        $("continueBtn").addEventListener("click", (e)=>{
+          if(document.body.classList.contains("editor-on")) return;
+          e.preventDefault(); e.stopPropagation();
+          const current=$("intermediateScreen");
+          current.classList.add("fade-out");
+          setTimeout(goMain, 520);
+        });
       }
 
       // ---- BOTÕES DA TELA PRINCIPAL --------------------------------------
@@ -693,6 +658,7 @@
       // EDITOR VISUAL (?editor=1) — mostra somente recursos ativos
       // ====================================================================
       const editorLabels = {
+        continue:"Continuar — Intermediária",
         confirm:"WhatsApp",
         map:"Localização",
         gift:"Presentes",
@@ -720,6 +686,7 @@
       let selected = areaSelect.value || Object.keys(HOTSPOTS)[0] || "confirm";
 
       function editorScreenFor(key){
+        if(key === "continue") return "intermediateScreen";
         if(key === "counter" || key === "backCountdown") return "countdownScreen";
         if(key === "pix" || key === "backGift") return "giftScreen";
         if(key === "backDress") return "dressScreen";
@@ -822,7 +789,8 @@
         el.addEventListener("pointerdown", e=>{
           if(!document.body.classList.contains("editor-on")) return;
           e.preventDefault(); e.stopPropagation(); selectArea(key);
-          const stageEl = key === "counter" ? $("countdownStage") :
+          const stageEl = key === "continue" ? $("intermediateStage") :
+            key === "counter" ? $("countdownStage") :
             key === "pix" ? $("giftStage") :
             key === "backGift" ? $("giftStage") :
             key === "backDress" ? $("dressStage") :
@@ -855,6 +823,7 @@
       });
       $("resetAreas").addEventListener("click",()=>{
         HOTSPOTS = {};
+        if(hasIntermediate) HOTSPOTS.continue = JSON.parse(JSON.stringify((C.hotspots||{}).continue || {left:25,top:72,width:50,height:10}));
         Object.entries(C.hotspots || {}).forEach(([key,value])=>{
           if(featureEnabled[key]) HOTSPOTS[key] = JSON.parse(JSON.stringify(value));
         });
